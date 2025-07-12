@@ -4,16 +4,22 @@ from kivy.properties import (NumericProperty, StringProperty, AliasProperty,
                              ReferenceListProperty, ObjectProperty,
                              ListProperty, DictProperty, BooleanProperty)
 from kivy.graphics import (Canvas, Translate, Fbo, ClearColor, ClearBuffers,
-                            Scale)
+                           Scale)
 from kivy.base import EventLoop
 from kivy.lang import Builder
 from kivy.context import get_current_context
 from weakref import proxy
 from functools import partial
+from kivy.graphics.transformation import Matrix
+from kivy.eventmanager import (
+    MODE_DONT_DISPATCH,
+    MODE_FILTERED_DISPATCH,
+    MODE_DEFAULT_DISPATCH
+)
+from kivy.weakproxy import WeakProxy
 from itertools import islice
 from kivy.uix.widget import (_widget_destructors, WidgetException,
-    _widget_destructor, Widget, WidgetMetaclass)
-
+                             _widget_destructor, Widget, WidgetMetaclass)
 
 cdef class CWidget(EventDispatcher):
     '''Widget class. See module documentation for more information.
@@ -32,7 +38,7 @@ cdef class CWidget(EventDispatcher):
             all their kv rules applied. `base_widget` is the base-most widget
             whose instantiation triggered the kv rules (i.e. the widget
             instantiated from Python, e.g. ``MyWidget()``).
-        
+
             .. versionchanged:: 3.0
 
     .. warning::
@@ -139,7 +145,6 @@ cdef class CWidget(EventDispatcher):
         if on_args:
             self.bind(**on_args)
 
-
     @property
     def proxy_ref(self):
         '''Return a proxy reference to the widget, i.e. without creating a
@@ -154,7 +159,7 @@ cdef class CWidget(EventDispatcher):
             return _proxy_ref
 
         f = partial(_widget_destructor, self.uid)
-        self._proxy_ref = _proxy_ref = proxy(self, f)
+        self._proxy_ref = _proxy_ref = WeakProxy(self, f)
         # Only f should be enough here, but it appears that is a very
         # specific case, the proxy destructor is not called if both f and
         # _proxy_ref are not together in a tuple.
@@ -169,15 +174,12 @@ cdef class CWidget(EventDispatcher):
     def __hash__(self):
         return id(self)
 
-    @property
-    def __self__(self):
-        return self
-
     def apply_class_lang_rules(
             self, root=None, ignored_consts=set(), rule_children=None):
         '''
         Method that is called by kivy to apply the kv rules of this widget's
         class.
+
         :Parameters:
             `root`: :class:`Widget`
                 The root widget that instantiated this widget in kv, if the
@@ -186,35 +188,50 @@ cdef class CWidget(EventDispatcher):
                 (internal) See :meth:`~kivy.lang.builder.BuilderBase.apply`.
             `rule_children`: list
                 (internal) See :meth:`~kivy.lang.builder.BuilderBase.apply`.
+
         This is useful to be able to execute code before/after the class kv
         rules are applied to the widget. E.g. if the kv code requires some
         properties to be initialized before it is used in a binding rule.
         If overwriting remember to call ``super``, otherwise the kv rules will
         not be applied.
+
         In the following example,
+
         .. code-block:: python
+
             class MyWidget(Widget):
                 pass
+
             class OtherWidget(MyWidget):
                 pass
+
         .. code-block:: kv
+
         <MyWidget>:
             my_prop: some_value
+
         <OtherWidget>:
             other_prop: some_value
+
         When ``OtherWidget`` is instantiated with ``OtherWidget()``, the
         widget's :meth:`apply_class_lang_rules` is called and it applies the
         kv rules of this class - ``<MyWidget>`` and ``<OtherWidget>``.
+
         Similarly, when the widget is instantiated from kv, e.g.
+
         .. code-block:: kv
+
             <MyBox@BoxLayout>:
                 height: 55
                 OtherWidget:
                     width: 124
+
         ``OtherWidget``'s :meth:`apply_class_lang_rules` is called and it
         applies the kv rules of this class - ``<MyWidget>`` and
         ``<OtherWidget>``.
+
         .. note::
+
             It applies only the class rules not the instance rules. I.e. in the
             above kv example in the ``MyBox`` rule when ``OtherWidget`` is
             instantiated, its :meth:`apply_class_lang_rules` applies the
@@ -222,6 +239,7 @@ cdef class CWidget(EventDispatcher):
             apply the ``width: 124`` rule. The ``width: 124`` rule is part of
             the ``MyBox`` rule and is applied by the ``MyBox``'s instance's
             :meth:`apply_class_lang_rules`.
+
         .. versionchanged:: 1.11.0
         '''
         Builder.apply(
@@ -232,45 +250,49 @@ cdef class CWidget(EventDispatcher):
     # Collision
     #
     def collide_point(self, x, y):
-        '''Check if a point (x, y) is inside the widget's axis aligned bounding
+        '''
+        Check if a point (x, y) is inside the widget's axis aligned bounding
         box.
 
         :Parameters:
             `x`: numeric
-                X position of the point (in window coordinates)
+                x position of the point (in parent coordinates)
             `y`: numeric
-                Y position of the point (in window coordinates)
+                y position of the point (in parent coordinates)
 
         :Returns:
-            bool, True if the point is inside the bounding box.
+            A bool. True if the point is inside the bounding box, False
+            otherwise.
 
-    .. code-block:: python
+        .. code-block:: python
 
-        >>> Widget(pos=(10, 10), size=(50, 50)).collide_point(40, 40)
-        True
+            >>> Widget(pos=(10, 10), size=(50, 50)).collide_point(40, 40)
+            True
         '''
         return self.x <= x <= self.right and self.y <= y <= self.top
 
     def collide_widget(self, wid):
-        '''Check if the other widget collides with this widget.
-        Performs an axis-aligned bounding box intersection test by default.
+        '''
+        Check if another widget collides with this widget. This function
+        performs an axis-aligned bounding box intersection test by default.
 
         :Parameters:
             `wid`: :class:`Widget` class
-                Widget to collide with.
+                Widget to test collision with.
 
         :Returns:
-            bool, True if the other widget collides with this widget.
+            bool. True if the other widget collides with this widget, False
+            otherwise.
 
-    .. code-block:: python
+        .. code-block:: python
 
-        >>> wid = Widget(size=(50, 50))
-        >>> wid2 = Widget(size=(50, 50), pos=(25, 25))
-        >>> wid.collide_widget(wid2)
-        True
-        >>> wid2.pos = (55, 55)
-        >>> wid.collide_widget(wid2)
-        False
+            >>> wid = Widget(size=(50, 50))
+            >>> wid2 = Widget(size=(50, 50), pos=(25, 25))
+            >>> wid.collide_widget(wid2)
+            True
+            >>> wid2.pos = (55, 55)
+            >>> wid.collide_widget(wid2)
+            False
         '''
         if self.right < wid.x:
             return False
@@ -281,6 +303,43 @@ cdef class CWidget(EventDispatcher):
         if self.y > wid.top:
             return False
         return True
+
+    def on_motion(self, etype, me):
+        '''Called when a motion event is received.
+
+        :Parameters:
+            `etype`: `str`
+                Event type, one of "begin", "update" or "end"
+            `me`: :class:`~kivy.input.motionevent.MotionEvent`
+                Received motion event
+        :Returns: `bool`
+            `True` to stop event dispatching
+
+        .. versionadded:: 2.1.0
+
+        .. warning::
+            This is an experimental method and it remains so while this warning
+            is present.
+        '''
+        if self.disabled or me.dispatch_mode == MODE_DONT_DISPATCH:
+            return
+        if me.type_id not in self.motion_filter:
+            return
+        filtered = self.motion_filter[me.type_id]
+        if filtered[0] is self and len(filtered) == 1:
+            return
+        if me.dispatch_mode == MODE_DEFAULT_DISPATCH:
+            last_filtered = filtered[-1]
+            for widget in self.children[:]:
+                if widget.dispatch('on_motion', etype, me):
+                    return True
+                if widget is last_filtered:
+                    return
+        if me.dispatch_mode == MODE_FILTERED_DISPATCH:
+            widgets = filtered[1:] if filtered[0] is self else filtered[:]
+            for widget in widgets:
+                if widget.dispatch('on_motion', etype, me):
+                    return True
 
     #
     # Default event handlers
@@ -294,8 +353,10 @@ cdef class CWidget(EventDispatcher):
                 :mod:`~kivy.uix.relativelayout` for a discussion on
                 coordinate systems.
 
-        :Returns:
-            bool. If True, the dispatching of the touch event will stop.
+        :Returns: bool
+            If True, the dispatching of the touch event will stop.
+            If False, the event will continue to be dispatched to the rest
+            of the widget tree.
         '''
         if self.disabled and self.collide_point(*touch.pos):
             return True
@@ -328,10 +389,6 @@ cdef class CWidget(EventDispatcher):
     def on_kv_post(self, base_widget):
         pass
 
-    def on_disabled(self, instance, value):
-        for child in self.children:
-            child.disabled = value
-
     #
     # Tree management
     #
@@ -342,7 +399,11 @@ cdef class CWidget(EventDispatcher):
             `widget`: :class:`Widget`
                 Widget to add to our list of children.
             `index`: int, defaults to 0
-                Index to insert the widget in the list.
+                Index to insert the widget in the list. Notice that the default
+                of 0 means the widget is inserted at the beginning of the list
+                and will thus be drawn on top of other sibling widgets. For a
+                full discussion of the index and widget hierarchy, please see
+                the :doc:`Widgets Programming Guide <guide/widgets>`.
 
                 .. versionadded:: 1.0.5
             `canvas`: str, defaults to None
@@ -377,8 +438,7 @@ cdef class CWidget(EventDispatcher):
                                   % (widget, parent))
         widget.parent = parent = self
         # Child will be disabled if added to a disabled parent.
-        if parent.disabled:
-            widget.disabled = True
+        widget.inc_disabled(self._disabled_count)
 
         canvas = self.canvas.before if canvas == 'before' else \
             self.canvas.after if canvas == 'after' else self.canvas
@@ -391,7 +451,7 @@ cdef class CWidget(EventDispatcher):
             children = self.children
             if index >= len(children):
                 index = len(children)
-                next_index = 0
+                next_index = canvas.indexof(children[-1].canvas)
             else:
                 next_child = children[index]
                 next_index = canvas.indexof(next_child.canvas)
@@ -405,6 +465,9 @@ cdef class CWidget(EventDispatcher):
             if next_index == 0 and canvas.has_before:
                 next_index = 1
             canvas.insert(next_index, widget.canvas)
+        for type_id in widget.motion_filter:
+            self.register_for_motion_event(type_id, widget)
+        widget.fbind('motion_filter', self._update_motion_filter)
 
     def remove_widget(self, widget):
         '''Remove a widget from the children of this widget.
@@ -430,24 +493,116 @@ cdef class CWidget(EventDispatcher):
             self.canvas.after.remove(widget.canvas)
         elif widget.canvas in self.canvas.before.children:
             self.canvas.before.remove(widget.canvas)
+        for type_id in widget.motion_filter:
+            self.unregister_for_motion_event(type_id, widget)
+        widget.funbind('motion_filter', self._update_motion_filter)
         widget.parent = None
+        widget.dec_disabled(self._disabled_count)
 
     def clear_widgets(self, children=None):
-        '''Remove all widgets added to this widget.
+        '''
+        Remove all (or the specified) :attr:`~Widget.children` of this widget.
+        If the 'children' argument is specified, it should be a list (or
+        filtered list) of children of the current widget.
 
         .. versionchanged:: 1.8.0
-            `children` argument can be used to select the children we want to
-            remove. It should be a list of children (or filtered list) of the
-            current widget.
-        '''
+            The `children` argument can be used to specify the children you
+            want to remove.
+        .. versionchanged:: 2.1.0
 
-        if not children:
-            children = self.children
+            Specifying an empty ``children`` list leaves the widgets unchanged.
+            Previously it was treated like ``None`` and all children were
+            removed.
+        '''
+        if children is None or children is self.children:
+            children = self.children[:]
+
         remove_widget = self.remove_widget
-        for child in children[:]:
+        for child in children:
             remove_widget(child)
 
-    def export_to_png(self, filename, *args):
+    def _update_motion_filter(self, child_widget, child_motion_filter):
+        old_events = []
+        for type_id, widgets in self.motion_filter.items():
+            if child_widget in widgets:
+                old_events.append(type_id)
+        for type_id in old_events:
+            if type_id not in child_motion_filter:
+                self.unregister_for_motion_event(type_id, child_widget)
+        for type_id in child_motion_filter:
+            if type_id not in old_events:
+                self.register_for_motion_event(type_id, child_widget)
+
+    def _find_index_in_motion_filter(self, type_id, widget):
+        if widget is self:
+            return 0
+        find_index = self.children.index
+        max_index = find_index(widget) + 1
+        motion_widgets = self.motion_filter[type_id]
+        insert_index = 1 if motion_widgets[0] is self else 0
+        for index in range(insert_index, len(motion_widgets)):
+            if find_index(motion_widgets[index]) < max_index:
+                insert_index += 1
+            else:
+                break
+        return insert_index
+
+    def register_for_motion_event(self, type_id, widget=None):
+        '''Register to receive motion events of `type_id`.
+
+        Override :meth:`on_motion` or bind to `on_motion` event to handle
+        the incoming motion events.
+
+        :Parameters:
+            `type_id`: `str`
+                Motion event type id (eg. "touch", "hover", etc.)
+            `widget`: `Widget`
+                Child widget or `self` if omitted
+
+        .. versionadded:: 2.1.0
+
+        .. note::
+            Method can be called multiple times with the same arguments.
+
+        .. warning::
+            This is an experimental method and it remains so while this warning
+            is present.
+        '''
+        a_widget = widget or self
+        motion_filter = self.motion_filter
+        if type_id not in motion_filter:
+            motion_filter[type_id] = [a_widget]
+        elif widget not in motion_filter[type_id]:
+            index = self._find_index_in_motion_filter(type_id, a_widget)
+            motion_filter[type_id].insert(index, a_widget)
+
+    def unregister_for_motion_event(self, type_id, widget=None):
+        '''Unregister to receive motion events of `type_id`.
+
+        :Parameters:
+            `type_id`: `str`
+                Motion event type id (eg. "touch", "hover", etc.)
+            `widget`: `Widget`
+                Child widget or `self` if omitted
+
+        .. versionadded:: 2.1.0
+
+        .. note::
+            Method can be called multiple times with the same arguments.
+
+        .. warning::
+            This is an experimental method and it remains so while this warning
+            is present.
+        '''
+        a_widget = widget or self
+        motion_filter = self.motion_filter
+        if type_id in motion_filter:
+            if a_widget in motion_filter[type_id]:
+                motion_filter[type_id].remove(a_widget)
+                if not motion_filter[type_id]:
+                    del motion_filter[type_id]
+
+    def export_to_png(self, filename, *args, **kwargs):
         '''Saves an image of the widget and its children in png format at the
         specified filename. Works by removing the widget canvas from its
         parent, rendering to an :class:`~kivy.graphics.fbo.Fbo`, and calling
@@ -458,8 +613,8 @@ cdef class CWidget(EventDispatcher):
             The image includes only this widget and its children. If you want
             to include widgets elsewhere in the tree, you must call
             :meth:`~Widget.export_to_png` from their common parent, or use
-            :meth:`~kivy.core.window.Window.screenshot` to capture the whole
-            window.
+            :meth:`~kivy.core.window.WindowBase.screenshot` to capture the
+            whole window.
 
         .. note::
 
@@ -467,29 +622,50 @@ cdef class CWidget(EventDispatcher):
             extension in your filename.
 
         .. versionadded:: 1.9.0
+
+        :Parameters:
+            `filename`: str
+                The filename with which to save the png.
+            `scale`: float
+                The amount by which to scale the saved image, defaults to 1.
+
+                .. versionadded:: 1.11.0
         '''
+        self.export_as_image(*args, **kwargs).save(filename, flipped=False)
+
+    def export_as_image(self, *args, **kwargs):
+        '''Return an core :class:`~kivy.core.image.Image` of the actual
+        widget.
+
+        .. versionadded:: 1.11.0
+        '''
+        from kivy.core.image import Image
+        scale = kwargs.get('scale', 1)
 
         if self.parent is not None:
             canvas_parent_index = self.parent.canvas.indexof(self.canvas)
-            self.parent.canvas.remove(self.canvas)
+            if canvas_parent_index > -1:
+                self.parent.canvas.remove(self.canvas)
 
-        fbo = Fbo(size=self.size, with_stencilbuffer=True)
+        fbo = Fbo(size=(self.width * scale, self.height * scale),
+                  with_stencilbuffer=True)
 
         with fbo:
-            ClearColor(0, 0, 0, 1)
+            ClearColor(0, 0, 0, 0)
             ClearBuffers()
             Scale(1, -1, 1)
+            Scale(scale, scale, 1)
             Translate(-self.x, -self.y - self.height, 0)
 
         fbo.add(self.canvas)
         fbo.draw()
-        fbo.texture.save(filename, flipped=False)
+        img = Image(fbo.texture)
         fbo.remove(self.canvas)
 
-        if self.parent is not None:
+        if self.parent is not None and canvas_parent_index > -1:
             self.parent.canvas.insert(canvas_parent_index, self.canvas)
 
-        return True
+        return img
 
     def get_root_window(self):
         '''Return the root window.
@@ -562,7 +738,9 @@ cdef class CWidget(EventDispatcher):
             A generator that walks the tree, returning widgets in the
             forward layout order.
 
-        For example, given a tree with the following structure::
+        For example, given a tree with the following structure:
+
+        .. code-block:: kv
 
             GridLayout:
                 Button
@@ -649,7 +827,9 @@ cdef class CWidget(EventDispatcher):
             A generator that walks the tree, returning widgets in the
             reverse layout order.
 
-        For example, given a tree with the following structure::
+        For example, given a tree with the following structure:
+
+        .. code-block:: kv
 
             GridLayout:
                 Button
@@ -684,18 +864,24 @@ cdef class CWidget(EventDispatcher):
                 return
 
     def to_widget(self, x, y, relative=False):
-        '''Convert the given coordinate from window to local widget
-        coordinates. See :mod:`~kivy.uix.relativelayout` for details on the
-        coordinate systems.
+        '''Convert the coordinate from window to local (current widget)
+        coordinates.
+
+        See :mod:`~kivy.uix.relativelayout` for details on the coordinate
+        systems.
         '''
         if self.parent:
             x, y = self.parent.to_widget(x, y)
         return self.to_local(x, y, relative=relative)
 
     def to_window(self, x, y, initial=True, relative=False):
-        '''Transform local coordinates to window coordinates. See
-        :mod:`~kivy.uix.relativelayout` for details on the coordinate systems.
-        '''
+        """If ``initial`` is True, the default, it transforms **parent**
+        coordinates to window coordinates. Otherwise, it transforms **local**
+        (current widget) coordinates to window coordinates.
+
+        See :mod:`~kivy.uix.relativelayout` for details on the coordinate
+        systems.
+        """
         if not initial:
             x, y = self.to_parent(x, y, relative=relative)
         if self.parent:
@@ -704,30 +890,57 @@ cdef class CWidget(EventDispatcher):
         return (x, y)
 
     def to_parent(self, x, y, relative=False):
-        '''Transform local coordinates to parent coordinates. See
-        :mod:`~kivy.uix.relativelayout` for details on the coordinate systems.
+        """Transform local (current widget) coordinates to parent coordinates.
+
+        See :mod:`~kivy.uix.relativelayout` for details on the coordinate
+        systems.
 
         :Parameters:
             `relative`: bool, defaults to False
                 Change to True if you want to translate relative positions from
                 a widget to its parent coordinates.
-        '''
+        """
         if relative:
             return (x + self.x, y + self.y)
         return (x, y)
 
     def to_local(self, x, y, relative=False):
-        '''Transform parent coordinates to local coordinates. See
-        :mod:`~kivy.uix.relativelayout` for details on the coordinate systems.
+        """Transform parent coordinates to local (current widget) coordinates.
+
+        See :mod:`~kivy.uix.relativelayout` for details on the coordinate
+        systems.
 
         :Parameters:
             `relative`: bool, defaults to False
                 Change to True if you want to translate coordinates to
                 relative widget coordinates.
-        '''
+        """
         if relative:
             return (x - self.x, y - self.y)
         return (x, y)
+
+    def _apply_transform(self, m, pos=None):
+        if self.parent:
+            x, y = self.parent.to_widget(relative=True,
+                                         *self.to_window(*(pos or self.pos)))
+            m.translate(x, y, 0)
+            m = self.parent._apply_transform(m) if self.parent else m
+        return m
+
+    def get_window_matrix(self, x=0, y=0):
+        '''Calculate the transformation matrix to convert between window and
+        widget coordinates.
+
+        :Parameters:
+            `x`: float, defaults to 0
+                Translates the matrix on the x axis.
+            `y`: float, defaults to 0
+                Translates the matrix on the y axis.
+        '''
+        m = Matrix()
+        m.translate(x, y, 0)
+        m = self._apply_transform(m)
+        return m
 
     x = NumericProperty(0)
     '''X position of the widget.
@@ -751,6 +964,9 @@ cdef class CWidget(EventDispatcher):
         Keep in mind that the `width` property is subject to layout logic and
         that this has not yet happened at the time of the widget's `__init__`
         method.
+
+    .. warning::
+        A negative width is not supported.
     '''
 
     height = NumericProperty(100)
@@ -763,6 +979,9 @@ cdef class CWidget(EventDispatcher):
         Keep in mind that the `height` property is subject to layout logic and
         that this has not yet happened at the time of the widget's `__init__`
         method.
+
+    .. warning::
+        A negative height is not supported.
     '''
 
     pos = ReferenceListProperty(x, y)
@@ -785,7 +1004,9 @@ cdef class CWidget(EventDispatcher):
     def set_right(self, value):
         self.x = value - self.width
 
-    right = AliasProperty(get_right, set_right, bind=('x', 'width'))
+    right = AliasProperty(get_right, set_right,
+                          bind=('x', 'width'),
+                          cache=True, watch_before_use=False)
     '''Right position of the widget.
 
     :attr:`right` is an :class:`~kivy.properties.AliasProperty` of
@@ -798,7 +1019,9 @@ cdef class CWidget(EventDispatcher):
     def set_top(self, value):
         self.y = value - self.height
 
-    top = AliasProperty(get_top, set_top, bind=('y', 'height'))
+    top = AliasProperty(get_top, set_top,
+                        bind=('y', 'height'),
+                        cache=True, watch_before_use=False)
     '''Top position of the widget.
 
     :attr:`top` is an :class:`~kivy.properties.AliasProperty` of
@@ -811,7 +1034,9 @@ cdef class CWidget(EventDispatcher):
     def set_center_x(self, value):
         self.x = value - self.width / 2.
 
-    center_x = AliasProperty(get_center_x, set_center_x, bind=('x', 'width'))
+    center_x = AliasProperty(get_center_x, set_center_x,
+                             bind=('x', 'width'),
+                             cache=True, watch_before_use=False)
     '''X center position of the widget.
 
     :attr:`center_x` is an :class:`~kivy.properties.AliasProperty` of
@@ -824,7 +1049,9 @@ cdef class CWidget(EventDispatcher):
     def set_center_y(self, value):
         self.y = value - self.height / 2.
 
-    center_y = AliasProperty(get_center_y, set_center_y, bind=('y', 'height'))
+    center_y = AliasProperty(get_center_y, set_center_y,
+                             bind=('y', 'height'),
+                             cache=True, watch_before_use=False)
     '''Y center position of the widget.
 
     :attr:`center_y` is an :class:`~kivy.properties.AliasProperty` of
@@ -842,18 +1069,6 @@ cdef class CWidget(EventDispatcher):
     '''Class of the widget, used for styling.
     '''
 
-    id = StringProperty(None, allownone=True)
-    '''Unique identifier of the widget in the tree.
-
-    :attr:`id` is a :class:`~kivy.properties.StringProperty` and defaults to
-    None.
-
-    .. warning::
-
-        If the :attr:`id` is already used in the tree, an exception will
-        be raised.
-    '''
-
     children = ListProperty([])
     '''List of children of this widget.
 
@@ -865,19 +1080,18 @@ cdef class CWidget(EventDispatcher):
     what you are doing.
     '''
 
-    parent = ObjectProperty(None, allownone=True)
-    '''Parent of this widget.
+    parent = ObjectProperty(None, allownone=True, rebind=True)
+    '''Parent of this widget. The parent of a widget is set when the widget
+    is added to another widget and unset when the widget is removed from its
+    parent.
 
     :attr:`parent` is an :class:`~kivy.properties.ObjectProperty` and
     defaults to None.
-
-    The parent of a widget is set when the widget is added to another widget
-    and unset when the widget is removed from its parent.
     '''
 
     size_hint_x = NumericProperty(1, allownone=True)
-    '''X size hint. Represents how much space the widget should use in the
-    direction of the X axis relative to its parent's width.
+    '''x size hint. Represents how much space the widget should use in the
+    direction of the x axis relative to its parent's width.
     Only the :class:`~kivy.uix.layout.Layout` and
     :class:`~kivy.core.window.Window` classes make use of the hint.
 
@@ -902,7 +1116,7 @@ cdef class CWidget(EventDispatcher):
     '''
 
     size_hint_y = NumericProperty(1, allownone=True)
-    '''Y size hint.
+    '''y size hint.
 
     :attr:`size_hint_y` is a :class:`~kivy.properties.NumericProperty` and
     defaults to 1.
@@ -922,7 +1136,7 @@ cdef class CWidget(EventDispatcher):
 
     pos_hint = ObjectProperty({})
     '''Position hint. This property allows you to set the position of
-    the widget inside its parent layout, in percent (similar to
+    the widget inside its parent layout (similar to
     size_hint).
 
     For example, if you want to set the top of the widget to be at 90%
@@ -943,6 +1157,86 @@ cdef class CWidget(EventDispatcher):
     containing a dict.
     '''
 
+    size_hint_min_x = NumericProperty(None, allownone=True)
+    '''When not None, the x-direction minimum size (in pixels,
+    like :attr:`width`) when :attr:`size_hint_x` is also not None.
+
+    When :attr:`size_hint_x` is not None, it is the minimum width that the
+    widget will be set due to the :attr:`size_hint_x`. I.e. when a smaller size
+    would be set, :attr:`size_hint_min_x` is the value used instead for the
+    widget width. When None, or when :attr:`size_hint_x` is None,
+    :attr:`size_hint_min_x` doesn't do anything.
+
+    Only the :class:`~kivy.uix.layout.Layout` and
+    :class:`~kivy.core.window.Window` classes make use of the hint.
+
+    :attr:`size_hint_min_x` is a :class:`~kivy.properties.NumericProperty` and
+    defaults to None.
+
+    .. versionadded:: 1.10.0
+    '''
+
+    size_hint_min_y = NumericProperty(None, allownone=True)
+    '''When not None, the y-direction minimum size (in pixels,
+    like :attr:`height`) when :attr:`size_hint_y` is also not None.
+
+    When :attr:`size_hint_y` is not None, it is the minimum height that the
+    widget will be set due to the :attr:`size_hint_y`. I.e. when a smaller size
+    would be set, :attr:`size_hint_min_y` is the value used instead for the
+    widget height. When None, or when :attr:`size_hint_y` is None,
+    :attr:`size_hint_min_y` doesn't do anything.
+
+    Only the :class:`~kivy.uix.layout.Layout` and
+    :class:`~kivy.core.window.Window` classes make use of the hint.
+
+    :attr:`size_hint_min_y` is a :class:`~kivy.properties.NumericProperty` and
+    defaults to None.
+
+    .. versionadded:: 1.10.0
+    '''
+
+    size_hint_min = ReferenceListProperty(size_hint_min_x, size_hint_min_y)
+    '''Minimum size when using :attr:`size_hint`.
+
+    :attr:`size_hint_min` is a :class:`~kivy.properties.ReferenceListProperty`
+    of (:attr:`size_hint_min_x`, :attr:`size_hint_min_y`) properties.
+
+    .. versionadded:: 1.10.0
+    '''
+
+    size_hint_max_x = NumericProperty(None, allownone=True)
+    '''When not None, the x-direction maximum size (in pixels,
+    like :attr:`width`) when :attr:`size_hint_x` is also not None.
+
+    Similar to :attr:`size_hint_min_x`, except that it sets the maximum width.
+
+    :attr:`size_hint_max_x` is a :class:`~kivy.properties.NumericProperty` and
+    defaults to None.
+
+    .. versionadded:: 1.10.0
+    '''
+
+    size_hint_max_y = NumericProperty(None, allownone=True)
+    '''When not None, the y-direction maximum size (in pixels,
+    like :attr:`height`) when :attr:`size_hint_y` is also not None.
+
+    Similar to :attr:`size_hint_min_y`, except that it sets the maximum height.
+
+    :attr:`size_hint_max_y` is a :class:`~kivy.properties.NumericProperty` and
+    defaults to None.
+
+    .. versionadded:: 1.10.0
+    '''
+
+    size_hint_max = ReferenceListProperty(size_hint_max_x, size_hint_max_y)
+    '''Maximum size when using :attr:`size_hint`.
+
+    :attr:`size_hint_max` is a :class:`~kivy.properties.ReferenceListProperty`
+    of (:attr:`size_hint_max_x`, :attr:`size_hint_max_y`) properties.
+
+    .. versionadded:: 1.10.0
+    '''
+
     ids = DictProperty({})
     '''This is a dictionary of ids defined in your kv language. This will only
     be populated if you use ids in your kv language code.
@@ -953,7 +1247,9 @@ cdef class CWidget(EventDispatcher):
     empty dict {}.
 
     The :attr:`ids` are populated for each root level widget definition. For
-    example::
+    example:
+
+    .. code-block:: kv
 
         # in kv
         <MyWidget@Widget>:
@@ -1023,22 +1319,29 @@ cdef class CWidget(EventDispatcher):
         if canvas is not None:
             canvas.opacity = value
 
-    '''Canvas of the widget.
-    The canvas is a graphics object that contains all the drawing instructions
-    for the graphical representation of the widget.
-    There are no general properties for the Widget class, such as background
-    color, to keep the design simple and lean. Some derived classes, such as
-    Button, do add such convenience properties but generally the developer is
-    responsible for implementing the graphics representation for a custom
-    widget from the ground up. See the derived widget classes for patterns to
-    follow and extend.
-    See :class:`~kivy.graphics.Canvas` for more information about the usage.
-    '''
+    # canvas = None
+    # '''Canvas of the widget.
+    #
+    # The canvas is a graphics object that contains all the drawing instructions
+    # for the graphical representation of the widget.
+    #
+    # There are no general properties for the Widget class, such as background
+    # color, to keep the design simple and lean. Some derived classes, such as
+    # Button, do add such convenience properties but generally the developer is
+    # responsible for implementing the graphics representation for a custom
+    # widget from the ground up. See the derived widget classes for patterns to
+    # follow and extend.
+    #
+    # See :class:`~kivy.graphics.Canvas` for more information about the usage.
+    # '''
 
     def get_disabled(self):
         return self._disabled_count > 0
 
     def set_disabled(self, value):
+        # Necessary to ensure a change between value of equal truthiness
+        # doesn't mess up the count
+        value = bool(value)
         if value != self._disabled_value:
             self._disabled_value = value
             if value:
@@ -1061,9 +1364,11 @@ cdef class CWidget(EventDispatcher):
         for c in self.children:
             c.dec_disabled(count)
 
-    disabled = AliasProperty(get_disabled, set_disabled)
-
+    disabled = AliasProperty(get_disabled, set_disabled, watch_before_use=False)
     '''Indicates whether this widget can interact with input or not.
+
+    :attr:`disabled` is an :class:`~kivy.properties.AliasProperty` and
+    defaults to False.
 
     .. note::
 
@@ -1074,8 +1379,28 @@ cdef class CWidget(EventDispatcher):
 
     .. versionadded:: 1.8.0
 
-    :attr:`disabled` is a :class:`~kivy.properties.BooleanProperty` and
-    defaults to False.
+    .. versionchanged:: 1.10.1
+
+        :attr:`disabled` was changed from a
+        :class:`~kivy.properties.BooleanProperty` to an
+        :class:`~kivy.properties.AliasProperty` to allow access to its
+        previous state when a parent's disabled state is changed.
+    '''
+
+    motion_filter = DictProperty()
+    '''Holds a dict of `type_id` to `list` of child widgets registered to
+    receive motion events of `type_id`.
+
+    Don't change the property directly but use
+    :meth:`register_for_motion_event` and :meth:`unregister_for_motion_event`
+    to register and unregister for motion events. If `self` is registered it
+    will always be the first element in the list.
+
+    .. versionadded:: 2.1.0
+
+    .. warning::
+        This is an experimental property and it remains so while this warning
+        is present.
     '''
 
 Factory.register('CWidget', cls=CWidget)

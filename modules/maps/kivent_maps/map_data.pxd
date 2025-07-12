@@ -11,6 +11,7 @@ ctypedef struct TileStruct:
 ctypedef struct ObjStruct:
     void* model
     unsigned int texkey
+    void * animation
     unsigned int x
     unsigned int y
 
@@ -23,6 +24,7 @@ cdef class LayerTile:
 cdef class LayerObject:
     cdef ObjStruct* obj_pointer
     cdef ModelManager model_manager
+    cdef AnimationManager animation_manager
     cdef unsigned int layer
 
 cdef class Tile:

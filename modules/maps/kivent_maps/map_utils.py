@@ -1,11 +1,14 @@
 import tmx
 from tmx import Layer, ObjectGroup
-from os.path import basename, dirname
+from os.path import basename
 
 from kivent_core.systems.renderers import Renderer, ColorPolyRenderer
 from kivent_core.systems.animation_sys import AnimationSystem
 
 from math import sin, cos, radians
+
+obj_size = {}
+
 
 def load_map_systems(layer_count, gameworld, renderargs, animargs, polyargs):
     '''
@@ -39,8 +42,8 @@ def load_map_systems(layer_count, gameworld, renderargs, animargs, polyargs):
     '''
     rendersystems = []
     for i in range(layer_count):
-        rendersystems.extend(['map_layer%d' % i, 'map_layer%d_polygons' % i])
-    animsystems = ['map_layer%d_animator' % i for i in range(layer_count)]
+        rendersystems.extend([f'map_layer{i}', f'map_layer{i}_polygons'])
+    animsystems = [f'map_layer{i}_animator' for i in range(layer_count)]
 
     system_count = gameworld.system_count
 
@@ -99,8 +102,7 @@ def init_entities_from_map(tile_map, init_entity):
 
             # Loop through all LayerTiles
             for tile in tile_layers.layers:
-                renderer_name = 'map_layer%d' % z_map[tile.layer]
-                animator_name = 'map_layer%d_animator' % z_map[tile.layer]
+                renderer_name = f'map_layer{z_map[tile.layer]}'
                 comp_data = {
                     'position': tile_map.get_tile_position(i, j),
                     'tile_map': {'name': tile_map.name, 'pos': (i,j)},
@@ -113,6 +115,7 @@ def init_entities_from_map(tile_map, init_entity):
 
                 # If tile is animated add that component
                 if tile.animation:
+                    animator_name = f'map_layer{z_map[tile.layer]}_animator'
                     comp_data[animator_name] = {
                         'name': tile.animation,
                         'loop': True,
@@ -127,23 +130,33 @@ def init_entities_from_map(tile_map, init_entity):
         for obj in obj_layer:
             if obj.texture:
                 # Object is an image
-                renderer_name = 'map_layer%d' % z_map[obj.layer]
+                renderer_name = f'map_layer{z_map[obj.layer]}'
+                obj_h = obj_size[obj.texture][1]
                 comp_data = {
-                    'position': (obj.position[0], mh - obj.position[1]),
+                    'position': (obj.position[0], (mh - obj.position[1]) + obj_h),
                     renderer_name: {
                         'model': obj.model,
                         'texture': obj.texture,
                         }
                     }
                 systems = ['position', renderer_name]
+
+                # If object is animated add that component
+                if obj.animation:
+                    animator_name = f'map_layer{z_map[obj.layer]}_animator'
+                    comp_data[animator_name] = {
+                        'name': obj.animation,
+                        'loop': True,
+                            }
+                    systems.append(animator_name)
             else:
                 # Object is a shape
-                renderer_name = 'map_layer%d_polygons' % z_map[obj.layer]
+                renderer_name = f'map_layer{z_map[obj.layer]}_polygons'
                 comp_data = {
                     'position': (obj.position[0], mh - obj.position[1]),
                     renderer_name: {
                         'model_key': obj.model,
-                        },
+                    },
                     # Color is taken from vertex, so white here
                     'color': (255, 255, 255, 255)
                     }
@@ -177,12 +190,12 @@ def parse_tmx(filename, gameworld):
     # z_map, the set of tile_ids which will be used in the map,
     # set of models of the objects in the map.
     tiles, tiles_z, objects, objects_z, tile_ids, objmodels = \
-            _load_tile_map(tilemap.layers, tilemap.width,
+            _load_tile_map(tilemap.layers, tilemap.width, tilemap.height,
                            _load_tile_properties(tilemap.tilesets))
 
     # Loads the models, textures and animations of the tileset into
     # corresponding managers
-    _load_tilesets(tilemap.tilesets, dirname(filename), tile_ids,
+    _load_tilesets(tilemap.tilesets, tile_ids,
                    texture_manager.load_atlas,
                    model_manager.load_textured_rectangle,
                    animation_manager.load_animation)
@@ -212,8 +225,7 @@ def parse_tmx(filename, gameworld):
     return name
 
 
-def _load_tilesets(tilesets, dirname, tile_ids,
-                   load_atlas, load_model, load_animation):
+def _load_tilesets(tilesets, tile_ids, load_atlas, load_model, load_animation):
     '''
     Tileset of the map contains an atlas of the images used by the tiles. We
     need to load all those images as textures and models. If they are animated
@@ -225,8 +237,6 @@ def _load_tilesets(tilesets, dirname, tile_ids,
     Args:
         tilesets (list): List of TileSet objects. We can create an atlas of
         the tile images from TileSet data using the tile_ids.
-
-        dirname (str): Directory of the image source of the tilesets
 
         tile_ids (list): List of tile ids which need to be loaded from the
         tileset.
@@ -246,37 +256,42 @@ def _load_tilesets(tilesets, dirname, tile_ids,
     animation_data = {}
     for tileset in tilesets:
         image = tileset.image
-        name = image.source
         fgid = int(tileset.firstgid)
-        w, h = int(image.width), int(image.height)
         tw, th = int(tileset.tilewidth), int(tileset.tileheight)
         m, s = int(tileset.margin), int(tileset.spacing)
-
-        rows = (w + s)//(tw + 2*m + s)
-        cols = (h + s)//(th + 2*m + s)
 
         for tile in tileset.tiles:
             if tile.animation:
                 animation = []
                 for frame in tile.animation:
                     animation.append({
-                        'texture': 'tile_%d' % (frame.tileid + fgid),
-                        'model': 'tile_%d' % (frame.tileid + fgid),
+                        'texture': f'tile_{(frame.tileid + fgid)}',
+                        'model': f'tile_{(frame.tileid + fgid)}',
                         'duration': frame.duration
                     })
                     tile_ids.add(frame.tileid + fgid)
-                animation_name = 'animation_tile_%d' % (tile.id + fgid)
+                animation_name = f'animation_tile_{(tile.id + fgid)}'
                 animation_data[animation_name] = animation
+            if not image:
+                img = tile.image
+                name = img.source
+                atlas_data[name] = {f'tile_{tile.id + fgid}': [0, 0, int(img.width), int(img.height)]}
+                model_data[f'tile_{tile.id + fgid}'] = (tw, th)
 
-        atlas_data[name] = {}
-        for tile in range(rows*cols):
-            if (tile + fgid) in tile_ids:
-                x, y = tile % rows, cols - 1 - int(tile / rows)
-                px, py = x * (tw + 2*m + s) + m, y * (th + 2*m + s) + m
-                atlas_data[name]['tile_%d' % (tile + fgid)] = (px, py, tw, th)
-                model_data['tile_%d' % (tile + fgid)] = (tw, th)
+        if image:
+            name = image.source
+            atlas_data[name] = {}
+            w, h = int(image.width), int(image.height)
+            rows = (w + s) // (tw + 2 * m + s)
+            cols = (h + s) // (th + 2 * m + s)
+            for tile in range(rows*cols):
+                if (tile + fgid) in tile_ids:
+                    x, y = tile % rows, cols - 1 - int(tile / rows)
+                    px, py = x * (tw + 2*m + s) + m, y * (th + 2*m + s) + m
+                    atlas_data[name][f'tile_{(tile + fgid)}'] = (px, py, tw, th)
+                    model_data[f'tile_{(tile + fgid)}'] = (tw, th)
 
-    load_atlas(atlas_data, 'dict', dirname)
+    load_atlas(atlas_data, 'dict', None)
     for model in model_data:
         tw, th = model_data[model]
         load_model('vertex_format_4f', tw, th, model, model)
@@ -312,7 +327,7 @@ def _load_obj_models(objmodels,
                             indices=obj['indices'])
 
 
-def _load_tile_map(layers, width, tile_properties):
+def _load_tile_map(layers, width, height, tile_properties):
     '''
     Loads data for all the tiles and objects of the tilemap as dicts
     which will directly be passed to map_manager. While looping through all
@@ -331,9 +346,8 @@ def _load_tile_map(layers, width, tile_properties):
         tile_properties (dict): A map for specific tile properties to be loaded.
 
     '''
-    height = int(len(layers[0].tiles)/width)
+    # height = int(len(layers[0].tiles)/width)
     tiles = [[[] for j in range(height)] for i in range(width)]
-    print(len(tiles),len(tiles[0]))
     objects = []
     objmodels = {}
     tile_ids = set()
@@ -350,12 +364,13 @@ def _load_tile_map(layers, width, tile_properties):
                 if tile.gid > 0:
                     tile_ids.add(tile.gid)
                     if tile.gid in tile_properties:
-                        tile = tile_properties[tile.gid]
+                        tile = tile_properties[tile.gid].copy()
                     else:
-                        tile = {'texture': 'tile_%d' % tile.gid,
-                                'model': 'tile_%d' % tile.gid}
+                        tile = {
+                            'texture': f'tile_{tile.gid}',
+                            'model': f'tile_{tile.gid}'
+                        }
                     tile['layer'] = tile_layer_count
-
                     tiles[n%width][int(n/width)].append(tile)
             tile_layer_count += 1
             tile_zindex.append(i)
@@ -366,15 +381,22 @@ def _load_tile_map(layers, width, tile_properties):
             else:
                 color = (0, 0, 0, 255)
             for n, obj in enumerate(layer.objects):
+                model = f'obj_{obj_layer_count}_{n}'
                 if obj.gid:
                     tile_ids.add(obj.gid)
-                    gid, width, height = obj.gid, obj.width, obj.height
-                    obj = {'texture': 'tile_%d' % gid,
-                           'model': 'obj_%d_%d' % (obj_layer_count, n),
-                           'position': (obj.x + width/2, obj.y + height/2)}
-                    objmodel = {'texture': 'tile_%d' % gid,
-                                'width': width,
-                                'height': height}
+                    gid, w, h = obj.gid, obj.width, obj.height
+                    texture = f'tile_{gid}'
+                    position = (obj.x + w/2, obj.y + h/2)
+                    if obj.gid in tile_properties:
+                        obj = tile_properties[obj.gid].copy()
+                    else:
+                        obj = {'texture': texture,
+                               'model': model}
+                    obj["position"] = position
+                    objmodel = {'texture': texture,
+                                'width': w,
+                                'height': h}
+                    obj_size[texture] = (w, h)
                 elif obj.polygon:
                     x_coords = [v[0] for v in obj.polygon]
                     y_coords = [v[1] for v in obj.polygon]
@@ -390,7 +412,7 @@ def _load_tile_map(layers, width, tile_properties):
                                        'v_color': color}
                         if n>0 and n<len(obj.polygon)-1:
                             indices.extend([0,n,n+1])
-                    obj = {'model': 'obj_%d_%d' % (obj_layer_count, n),
+                    obj = {'model': model,
                            'position': c}
                     objmodel = {'vertices': vertices,
                                 'indices': indices,
@@ -408,7 +430,7 @@ def _load_tile_map(layers, width, tile_properties):
                                        'v_color': color}
                         if t>0 and t<359:
                             indices.extend([0,t,t+1])
-                    obj = {'model': 'obj_%d_%d' % (obj_layer_count, n),
+                    obj = {'model': model,
                            'position': (obj.x + obj.width/2,
                                         obj.y + obj.height/2),
                           }
@@ -431,12 +453,11 @@ def _load_tile_map(layers, width, tile_properties):
                             'vertex_count': 4,
                             'index_count': 6
                             }
-                    obj = {'model': 'obj_%d_%d' % (obj_layer_count, n),
+                    obj = {'model': model,
                            'position': (obj.x + obj.width/2,
                                         obj.y + obj.height/2)}
 
-                name = 'obj_%d_%d' % (obj_layer_count, n)
-                objmodels[name] = objmodel
+                objmodels[model] = objmodel
                 layerobjs.append(obj)
 
             objects.append(layerobjs)
@@ -451,9 +472,5 @@ def _load_tile_properties(tilesets):
         for tile in tileset.tiles:
             if tile.animation:
                 gid = tile.id + tileset.firstgid
-                tile_properties[gid] = {
-                        'animation':
-                            'animation_tile_%d' % gid
-                    }
-
+                tile_properties[gid] = {'animation': f'animation_tile_{gid}'}
     return tile_properties

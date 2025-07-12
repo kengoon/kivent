@@ -7,6 +7,7 @@ from kivent_core.rendering.vertex_formats cimport format_registrar, FormatConfig
 from kivent_core.memory_handlers.block cimport MemoryBlock
 from kivent_core.memory_handlers.membuffer cimport Buffer
 from kivy.logger import Logger
+
 try:
     import cPickle as pickle
 except:
@@ -61,7 +62,7 @@ cdef class ModelManager(GameManager):
 
     '''
 
-    def __init__(self, allocation_size=100*1024):
+    def __init__(self, allocation_size=100 * 1024):
         self.allocation_size = allocation_size
         self.memory_blocks = {}
         self._models = {}
@@ -86,9 +87,8 @@ cdef class ModelManager(GameManager):
         def __get__(self):
             return self._model_register
 
-
     def register_entity_with_model(self, unsigned int entity_id, str system_id,
-        str model_name):
+                                   str model_name):
         '''
         Used to register entities that are using a certain model. Typically
         called internally as part of Renderer.init_component or the logic
@@ -113,7 +113,7 @@ cdef class ModelManager(GameManager):
             self._model_register[model_name][entity_id] = system_id
 
     def unregister_entity_with_model(self, unsigned int entity_id,
-        str model_name):
+                                     str model_name):
         '''
         Unregisters a previously registered entity.
 
@@ -179,7 +179,7 @@ cdef class ModelManager(GameManager):
         vertex_count = max(vertices) + 1
         pkl_file.close()
         return self.load_model(format_name, vertex_count, index_count,
-            model_name, indices=indices, vertices=vertices)
+                               model_name, indices=indices, vertices=vertices)
 
     def allocate(self, master_buffer, gameworld):
         '''
@@ -206,12 +206,11 @@ cdef class ModelManager(GameManager):
         # This default allocation can be controlled by **allocation_size**
         # if set before initalization.
 
-
         cdef FormatConfig format_config
         for each in format_registrar._vertex_formats:
             format_config = format_registrar._vertex_formats[each]
             Logger.info('KivEnt: Vertex Format: {name} registered. Size per '
-                'vertex is: {size}. Format is {format}.'.format(
+                        'vertex is: {size}. Format is {format}.'.format(
                 name=format_config._name,
                 size=str(format_config._size),
                 format=format_config._format))
@@ -235,17 +234,17 @@ cdef class ModelManager(GameManager):
             vertices_block.allocate_memory_with_buffer(master_buffer)
             indices_block.allocate_memory_with_buffer(master_buffer)
             memory_blocks[format] = {'indices_block': indices_block,
-                'vertices_block': vertices_block}
+                                     'vertices_block': vertices_block}
             total_count += vertex_size + index_size
             Logger.info('KivEnt: Model Manager reserved space for vertex '
-                'format: {name}. {space} KiB was reserved for vertices, '
-                'fitting a total of {vert_count}. {ind_space} KiB was reserved '
-                'for indices fitting a total of {ind_count}.'.format(
+                        'format: {name}. {space} KiB was reserved for vertices, '
+                        'fitting a total of {vert_count}. {ind_space} KiB was reserved '
+                        'for indices fitting a total of {ind_count}.'.format(
                 name=format,
-                space=str(vertex_size//1024),
-                vert_count=str(vertex_size//format_config._size),
-                ind_space=str(index_size//1024),
-                ind_count=str(index_size//sizeof(unsigned short)),))
+                space=str(vertex_size // 1024),
+                vert_count=str(vertex_size // format_config._size),
+                ind_space=str(index_size // 1024),
+                ind_count=str(index_size // sizeof(unsigned short)), ))
         return total_count
 
     def load_model_from_model_info(self, SVGModelInfo info, str svg_name):
@@ -270,10 +269,10 @@ cdef class ModelManager(GameManager):
         else:
             name = '{}_{}'.format(svg_name, uuid.uuid4())
         model_key = self.load_model(
-            'vertex_format_2f4ub', info.vertex_count, 
+            'vertex_format_2f4ub', info.vertex_count,
             info.index_count, name,
             indices=info.indices, vertices=info.vertices,
-            )
+        )
         self._svg_index[svg_name]['models'][info.element_id] = model_key
         return model_key
 
@@ -320,7 +319,7 @@ cdef class ModelManager(GameManager):
             dict: with keys 'center' and 'bbox'. center is a 2-tuple of 
             center_x, center_y coordinates. bbox is a 4-tuple of leftmost x,
             bottom y, rightmost x, top y.
-            
+
         '''
         cdef float top, left, right, bot, x, y
         initial_pos = infos[0].vertices[0]['pos']
@@ -355,10 +354,10 @@ cdef class ModelManager(GameManager):
         self._svg_index[svg_name]['models'] = {}
 
     def get_model_info_for_svg(self, str source, str svg_name=None,
-        custom_fields=None):
+                               custom_fields=None):
         '''
-        Returns the SVGModelInfo objects representing the elements in an 
-        svg file. You can then parse this data depending on your needs 
+        Returns the SVGModelInfo objects representing the elements in an
+        svg file. You can then parse this data depending on your needs
         before loading the final assets. Use **load_model_from_model_info**
         to load your assets.
         '''
@@ -375,8 +374,8 @@ cdef class ModelManager(GameManager):
         return svg_info
 
     def load_model(self, str format_name, unsigned int vertex_count,
-        unsigned int index_count, str name, do_copy=False, indices=None,
-        vertices=None):
+                   unsigned int index_count, str name, do_copy=False, indices=None,
+                   vertices=None):
         '''
         Loads a new VertexModel, and allocates space in the MemoryBlock for its
         vertex format to hold the model. The model will be stored in the
@@ -448,7 +447,7 @@ cdef class ModelManager(GameManager):
         cdef MemoryBlock index_block = self.memory_blocks[format_name][
             'indices_block']
         cdef VertexModel model = VertexModel(vertex_count, index_count,
-            format_config, index_block, vertex_block, name)
+                                             format_config, index_block, vertex_block, name)
         self._models[name] = model
         if format_name not in self._models_by_format:
             self._models_by_format[format_name] = {}
@@ -494,12 +493,12 @@ cdef class ModelManager(GameManager):
         if model_name is None:
             model_name = model_to_copy
         real_name = self.load_model(format_name, copy_model._vertex_count,
-            copy_model._index_count, model_name, do_copy=True)
+                                    copy_model._index_count, model_name, do_copy=True)
         self._models[real_name].copy_vertex_model(copy_model)
         return real_name
 
     def load_textured_rectangle(self, str format_name, float width,
-        float height, str texture_key, str name, do_copy=False):
+                                float height, str texture_key, str name, do_copy=False):
         '''
         Loads a new model and sets it to be a textured quad (sprite).
         vertex_count will be set to 4, index_count to 6 with indices set to
@@ -549,7 +548,6 @@ cdef class ModelManager(GameManager):
             del self._model_register[model_name]
         if model_name in self._key_counts:
             del self._key_counts[model_name]
-
 
 cdef class TextureManager(GameManager):
     '''
@@ -648,19 +646,19 @@ cdef class TextureManager(GameManager):
 
     def get_texture(self, tex_key):
         #handles if batch has no texture
-        if tex_key == <unsigned int>-1:
+        if tex_key == <unsigned int> -1:
             return None
         return self._textures[tex_key]
 
     def get_texture_by_name(self, name):
         tex_key = self._keys[name]
-        if tex_key == <unsigned int>-1:
+        if tex_key == <unsigned int> -1:
             return None
         return self._textures[tex_key]
 
     def get_groupkey_from_texkey(self, tex_key):
         #handles if entity has no texture
-        if tex_key == <unsigned int>-1:
+        if tex_key == <unsigned int> -1:
             return tex_key
         else:
             return self._texkey_index[tex_key]
@@ -675,27 +673,28 @@ cdef class TextureManager(GameManager):
         if datatype == 'json':
             dirname = path.dirname(source)
             with open(source, 'r') as data:
-                 atlas_data = json.load(data)
+                atlas_data = json.load(data)
         elif datatype == 'dict':
             atlas_data = source
+            dirname = dirname or ''
         keys = self._keys
         uvs = self._uvs
         loaded_keys = {}
         for imgname in atlas_data:
             texture = CoreImage(
-                path.join(dirname,imgname), nocache=True).texture
+                path.join(dirname, imgname), nocache=True).texture
             texture.mag_filter = mag_filter
             name = str(path.basename(imgname))
             size = texture.size
-            w = <float>size[0]
-            h = <float>size[1]
+            w = <float> size[0]
+            h = <float> size[1]
             atlas_content = atlas_data[imgname]
             atlas_key = self.load_texture(name, texture)
             group_list = self._groups[atlas_key]
             group_list_a = group_list.append
             for key in atlas_content:
                 key = str(key)
-                kx,ky,kw,kh = atlas_content[key]
+                kx, ky, kw, kh = atlas_content[key]
                 key_index = self._key_count
                 loaded_keys[key] = key_index
                 self._keys[key] = key_index
@@ -704,7 +703,7 @@ cdef class TextureManager(GameManager):
                 self._sizes[key_index] = kw, kh
                 x1, y1 = kx, ky
                 x2, y2 = x1 + kw, y1 + kh
-                self._uvs[key_index] = [x1/w, 1.-y1/h, x2/w, 1.-y2/h]
+                self._uvs[key_index] = [x1 / w, 1. - y1 / h, x2 / w, 1. - y2 / h]
                 self._key_count += 1
                 group_list_a(key_index)
         return loaded_keys

@@ -6,15 +6,14 @@ from kivent_core.memory_handlers.block cimport MemoryBlock
 from kivent_maps.map_manager cimport MapManager
 import math
 
-
 cdef class LayerTile:
     '''
     A LayerTile represents data for one layer of a Tile. It stores informtion
     required to render this layer of the tile.
-    
+
     **Attributes**:
         **model** (str): Name of the model used by this LayerTile
-        
+
         **texture** (str): Name of the texture used by this LayerTile
 
         **animation** (str): Name of the animation used by this LayerTile or
@@ -34,9 +33,9 @@ cdef class LayerTile:
 
     '''
 
-    def __cinit__(self, 
-                  ModelManager model_manager, 
-                  AnimationManager animation_manager, 
+    def __cinit__(self,
+                  ModelManager model_manager,
+                  AnimationManager animation_manager,
                   unsigned int layer):
         self.model_manager = model_manager
         self.animation_manager = animation_manager
@@ -44,11 +43,11 @@ cdef class LayerTile:
 
     property model:
         def __get__(self):
-            cdef VertexModel model = <VertexModel>self.tile_pointer.model
+            cdef VertexModel model = <VertexModel> self.tile_pointer.model
             return model.name
 
         def __set__(self, value):
-            self.tile_pointer.model = <void*>self.model_manager.models[value]
+            self.tile_pointer.model = <void *> self.model_manager.models[value]
 
     property texture:
         def __get__(self):
@@ -61,21 +60,20 @@ cdef class LayerTile:
         def __get__(self):
             cdef FrameList animation
             if self.tile_pointer.animation != NULL:
-                animation = <FrameList>self.tile_pointer.animation
+                animation = <FrameList> self.tile_pointer.animation
                 return animation.name
             else:
                 return False
 
         def __set__(self, str value):
             if value is not None:
-                self.tile_pointer.animation = <void*>self.animation_manager.animations[value]
+                self.tile_pointer.animation = <void *> self.animation_manager.animations[value]
             else:
                 self.tile_pointer.animation = NULL
 
     property layer:
         def __get__(self):
             return self.layer
-
 
 cdef class Tile:
     '''
@@ -131,14 +129,13 @@ cdef class Tile:
 
             for i in range(self.layer_count):
                 tile = LayerTile(self.model_manager, self.animation_manager, i)
-                tile.tile_pointer = &(self._layers[i])                    
+                tile.tile_pointer = &(self._layers[i])
 
                 # Check if the struct has data or is empty
-                if (tile.tile_pointer.model != NULL 
-                    or tile.tile_pointer.animation != NULL):
+                if (tile.tile_pointer.model != NULL
+                        or tile.tile_pointer.animation != NULL):
                     l.append(tile)
             return l
-
 
 cdef class LayerObject:
     '''
@@ -165,28 +162,42 @@ cdef class LayerObject:
 
     '''
 
-    def __cinit__(self, ModelManager model_manager):
+    def __cinit__(self, ModelManager model_manager, AnimationManager animation_manager):
         self.model_manager = model_manager
+        self.animation_manager = animation_manager
 
     property model:
         def __get__(self):
-            cdef VertexModel model = <VertexModel>self.obj_pointer.model
+            cdef VertexModel model = <VertexModel> self.obj_pointer.model
             return model.name
 
         def __set__(self, value):
-            self.obj_pointer.model = <void*>self.model_manager.models[value]
+            self.obj_pointer.model = <void *> self.model_manager.models[value]
 
     property texture:
         def __get__(self):
             if self.obj_pointer.texkey > 0:
-                return texture_manager.get_texname_from_texkey(
-                                            self.obj_pointer.texkey)
+                return texture_manager.get_texname_from_texkey(self.obj_pointer.texkey)
             else:
                 return None
 
         def __set__(self, value):
-            self.obj_pointer.texkey = texture_manager \
-                                        .get_texkey_from_name(value)
+            self.obj_pointer.texkey = texture_manager.get_texkey_from_name(value)
+
+    property animation:
+        def __get__(self):
+            cdef FrameList animation
+            if self.obj_pointer.animation != NULL:
+                animation = <FrameList> self.obj_pointer.animation
+                return animation.name
+            else:
+                return False
+
+        def __set__(self, str value):
+            if value is not None:
+                self.obj_pointer.animation = <void *> self.animation_manager.animations[value]
+            else:
+                self.obj_pointer.animation = NULL
 
     property position:
         def __get__(self):
@@ -201,12 +212,11 @@ cdef class LayerObject:
 
     property color:
         def __get__(self):
-            cdef VertexModel model = <VertexModel>self.obj_pointer.model
-            cdef VertexFormat2F4UB* vertex = \
-                    <VertexFormat2F4UB*>model.vertices_block.data
-            return (vertex.v_color[0], vertex.v_color[1], 
+            cdef VertexModel model = <VertexModel> self.obj_pointer.model
+            cdef VertexFormat2F4UB * vertex = \
+                <VertexFormat2F4UB *> model.vertices_block.data
+            return (vertex.v_color[0], vertex.v_color[1],
                     vertex.v_color[2], vertex.v_color[3])
-
 
 cdef class TileMap:
     '''
@@ -273,12 +283,12 @@ cdef class TileMap:
 
     '''
 
-    def  __cinit__(self, unsigned int size_x, unsigned int size_y,
-                   unsigned int tile_layer_count, unsigned int object_count,
-                   MemoryBlock tile_buffer,
-                   ModelManager model_manager,
-                   AnimationManager animation_manager,
-                   str name):
+    def __cinit__(self, unsigned int size_x, unsigned int size_y,
+                  unsigned int tile_layer_count, unsigned int object_count,
+                  MemoryBlock tile_buffer,
+                  ModelManager model_manager,
+                  AnimationManager animation_manager,
+                  str name):
         self.size_x = size_x
         self.size_y = size_y
         self.tile_layer_count = tile_layer_count
@@ -288,13 +298,13 @@ cdef class TileMap:
         self.animation_manager = animation_manager
 
         cdef MemoryBlock tiles_block = MemoryBlock(
-            size_x * size_y * tile_layer_count * sizeof(TileStruct), 
+            size_x * size_y * tile_layer_count * sizeof(TileStruct),
             tile_layer_count * sizeof(TileStruct), 1)
         tiles_block.allocate_memory_with_buffer(tile_buffer)
         self.tiles_block = tiles_block
 
         cdef MemoryBlock objects_block = MemoryBlock(
-            object_count * sizeof(ObjStruct), 
+            object_count * sizeof(ObjStruct),
             sizeof(ObjStruct), 1)
         objects_block.allocate_memory_with_buffer(tile_buffer)
         self.objects_block = objects_block
@@ -327,9 +337,9 @@ cdef class TileMap:
             raise IndexError()
 
         cdef Tile tile = Tile(self.model_manager, self.animation_manager,
-                                self.tile_layer_count)
-        tile._layers = <TileStruct*>self.tiles_block\
-                                            .get_pointer(i*self.size_y + j)
+                              self.tile_layer_count)
+        tile._layers = <TileStruct *> self.tiles_block \
+            .get_pointer(i * self.size_y + j)
 
         cdef TileStruct tile_data
         if empty:
@@ -361,12 +371,13 @@ cdef class TileMap:
         if n >= self.object_count:
             raise IndexError()
 
-        cdef LayerObject obj = LayerObject(self.model_manager)
-        obj_data = <ObjStruct*>self.objects_block.get_pointer(n)
+        cdef LayerObject obj = LayerObject(self.model_manager, self.animation_manager)
+        obj_data = <ObjStruct *> self.objects_block.get_pointer(n)
 
         if empty:
             obj_data.model = NULL
             obj_data.texkey = 0
+            obj_data.animation = NULL
 
         obj.obj_pointer = obj_data
         return obj
@@ -397,11 +408,11 @@ cdef class TileMap:
         w, h = self.size_on_screen
         tw, th = self.tile_size
 
-        return (i * tw + tw/2, h - j * th - th/2)
+        return i * tw + tw / 2, h - j * th - th / 2
 
     def get_tile_index(self, pixel_x, pixel_y):
         '''
-        Calculates the grid position(index) of the tile at a given pixel 
+        Calculates the grid position(index) of the tile at a given pixel
         position
 
         Args:
@@ -415,7 +426,7 @@ cdef class TileMap:
         w, h = self.size_on_screen
         tw, th = self.tile_size
 
-        return (int(pixel_x/tw), int((h - pixel_y)/th))
+        return int(pixel_x / tw), int((h - pixel_y) / th)
 
     property tiles:
         def __get__(self):
@@ -423,7 +434,7 @@ cdef class TileMap:
             for i in range(self.size_x):
                 tile_col = []
                 for j in range(self.size_y):
-                    tile_col.append(self.get_tile(i,j))
+                    tile_col.append(self.get_tile(i, j))
                 tile_list.append(tile_col)
             return tile_list
 
@@ -434,19 +445,19 @@ cdef class TileMap:
 
             if size_x != self.size_x or size_y != self.size_y:
                 raise Exception(
-                        "Provided tiles list does not match internal size." +
-                        "Expected %dx%d, got %dx%d" % \
-                                (self.size_x, self.size_y, size_x, size_y))
+                    "Provided tiles list does not match internal size." +
+                    "Expected %dx%d, got %dx%d" % \
+                    (self.size_x, self.size_y, size_x, size_y))
             for i in range(size_x):
                 for j in range(size_y):
-                    tile_layers = self.get_tile(i,j, True)
+                    tile_layers = self.get_tile(i, j, True)
                     layer_data = tiles[i][j]
 
                     for data in layer_data:
                         tile = tile_layers.get_layer_tile(data['layer'])
                         if 'animation' in data:
                             frames = self.animation_manager \
-                                        .animations[data['animation']]
+                                .animations[data['animation']]
                             tile.animation = data['animation']
 
                             # Take initial data from first frame
@@ -469,9 +480,18 @@ cdef class TileMap:
 
                 for obj_data in objs[i]:
                     obj = self.get_object(obj_count, True)
-                    if 'texture' in obj_data:
-                        obj.texture = obj_data['texture']
-                    obj.model = obj_data['model']
+                    if 'animation' in obj_data:
+                        frames = self.animation_manager \
+                            .animations[obj_data['animation']]
+                        obj.animation = obj_data['animation']
+
+                        # Take initial data from first frame
+                        obj.texture = frames[0].texture
+                        obj.model = frames[0].model
+                    else:
+                        if 'texture' in obj_data:
+                            obj.texture = obj_data['texture']
+                        obj.model = obj_data['model']
                     obj.position = obj_data['position']
                     obj.layer = i + self.tile_layer_count
 
@@ -486,8 +506,8 @@ cdef class TileMap:
             objs = []
             for i in range(self.obj_layer_count):
                 obj_layer = []
-                layer_size = (self._obj_layers_index[i+1] - 
-                                self._obj_layers_index[i])
+                layer_size = (self._obj_layers_index[i + 1] -
+                              self._obj_layers_index[i])
 
                 for j in range(layer_size):
                     pos = self._obj_layers_index[i] + j
@@ -526,7 +546,6 @@ cdef class TileMap:
         def __get__(self):
             return self.name
 
-    
 cdef class StaggeredTileMap(TileMap):
     '''
     StaggeredTileMap is a subclass of TileMap which is used for isometric
@@ -543,7 +562,7 @@ cdef class StaggeredTileMap(TileMap):
         ---------
          ---------
 
-        or 
+        or
 
         | | | |
         |||||||
@@ -571,24 +590,24 @@ cdef class StaggeredTileMap(TileMap):
             # Staggered along x axis
 
             y = h - (j * th + th)
-            x = (i * tw)/2 + tw/2
+            x = (i * tw) / 2 + tw / 2
 
             # If tile's x index matches the stagger index
             # it needs to be shifted down on the y axis
-            if si != ((i+1)%2 == 0):
-                y -= th/2
+            if si != ((i + 1) % 2 == 0):
+                y -= th / 2
         else:
             # Staggered along y axis
 
-            y = h - ((j * th)/2 + th)
-            x = i * tw + tw/2
+            y = h - ((j * th) / 2 + th)
+            x = i * tw + tw / 2
 
             # If tile's y index matches the stagger index
             # it needs to be shifted right on the x axis
-            if si != ((j+1)%2 == 0):
-                x += tw/2
+            if si != ((j + 1) % 2 == 0):
+                x += tw / 2
 
-        return (x, y)
+        return x, y
 
     def get_tile_index(self, pixel_x, pixel_y):
         w, h = self.size_on_screen
@@ -596,48 +615,48 @@ cdef class StaggeredTileMap(TileMap):
         sa = self._stagger_axis
         si = self._stagger_index
 
-        m = float(th)/tw         # positive slope of the tile sides
-        col_shifted = int((pixel_x - tw/2)/tw)
-        col_non_shifted = int(pixel_x/tw)
-        row_shifted = int((h - pixel_y - th/2)/th)
-        row_non_shifted = int((h - pixel_y)/th)
+        m = float(th) / tw  # positive slope of the tile sides
+        col_shifted = int((pixel_x - tw / 2) / tw)
+        col_non_shifted = int(pixel_x / tw)
+        row_shifted = int((h - pixel_y - th / 2) / th)
+        row_non_shifted = int((h - pixel_y) / th)
 
         # Here g and r in the name signifies green and red
         # as the two kinds of boxes for separation.
-        rel_x_g = abs(pixel_x - col_non_shifted*tw)
-        rel_x_r = abs(pixel_x - col_shifted*tw - tw/2)
+        rel_x_g = abs(pixel_x - col_non_shifted * tw)
+        rel_x_r = abs(pixel_x - col_shifted * tw - tw / 2)
 
         if si:
-            rel_y_g = abs(h - pixel_y - row_shifted*th - 1.5*th)
-            rel_y_r = abs(h - pixel_y - row_non_shifted*th - th)
+            rel_y_g = abs(h - pixel_y - row_shifted * th - 1.5 * th)
+            rel_y_r = abs(h - pixel_y - row_non_shifted * th - th)
         else:
-            rel_y_r = abs(h - pixel_y - row_shifted*th - 1.5*th)
-            rel_y_g = abs(h - pixel_y - row_non_shifted*th - th)
+            rel_y_r = abs(h - pixel_y - row_shifted * th - 1.5 * th)
+            rel_y_g = abs(h - pixel_y - row_non_shifted * th - th)
 
         # checking whether the point (pixel_x, pixel_y) lies inside the
         # tile by using the line equations of the four bounding lines.
-        if (rel_y_g > m*rel_x_g - th/2 and rel_y_g < (-1)*m*rel_x_g + 3*(th/2)
-                and rel_y_g < m*rel_x_g + th/2
-                and rel_y_g > (-1)*m*rel_x_g + th/2):
+        if (rel_y_g > m * rel_x_g - th / 2 and rel_y_g < (-1) * m * rel_x_g + 3 * (th / 2)
+                and rel_y_g < m * rel_x_g + th / 2
+                and rel_y_g > (-1) * m * rel_x_g + th / 2):
             if sa:
                 row = row_shifted if si else row_non_shifted
-                col = col_non_shifted*2
+                col = col_non_shifted * 2
             else:
                 col = col_non_shifted
-                row = row_shifted*2+1 if si else row_non_shifted*2
+                row = row_shifted * 2 + 1 if si else row_non_shifted * 2
 
-        elif (rel_y_r > m*rel_x_r - th/2
-                and rel_y_r < (-1)*m*rel_x_r + 3*(th/2)
-                and rel_y_r < m*rel_x_r + th/2
-                and rel_y_r > (-1)*m*rel_x_r + th/2):
+        elif (rel_y_r > m * rel_x_r - th / 2
+              and rel_y_r < (-1) * m * rel_x_r + 3 * (th / 2)
+              and rel_y_r < m * rel_x_r + th / 2
+              and rel_y_r > (-1) * m * rel_x_r + th / 2):
             if sa:
                 row = row_non_shifted if si else row_shifted
-                col = col_shifted*2+1
+                col = col_shifted * 2 + 1
             else:
                 col = col_shifted
-                row = row_non_shifted*2 if si else row_shifted*2+1
+                row = row_non_shifted * 2 if si else row_shifted * 2 + 1
 
-        return (col,row)
+        return col, row
 
     property size_on_screen:
         def __get__(self):
@@ -645,12 +664,12 @@ cdef class StaggeredTileMap(TileMap):
             tw, th = self.tile_size_x, self.tile_size_y
             sa = self._stagger_axis
 
-            if sa: # x axis
-                return ((sx - 1) * tw/2 + tw,
-                        sy * th + th/2)
-            else: # y axis
-                return (sx * tw + tw/2,
-                        (sy - 1) * th/2 + th)
+            if sa:  # x axis
+                return ((sx - 1) * tw / 2 + tw,
+                        sy * th + th / 2)
+            else:  # y axis
+                return (sx * tw + tw / 2,
+                        (sy - 1) * th / 2 + th)
 
     property stagger_index:
         def __get__(self):
@@ -663,7 +682,6 @@ cdef class StaggeredTileMap(TileMap):
             return 'x' if self._stagger_axis else 'y'
         def __set__(self, str value):
             self._stagger_axis = value == 'x'
-
 
 cdef class HexagonalTileMap(StaggeredTileMap):
     '''
@@ -686,19 +704,19 @@ cdef class HexagonalTileMap(StaggeredTileMap):
         ts = self.hex_side_length
 
         if sa:
-            y = h - (j * th + th/2)
-            x = (i * (tw + ts))/2 + tw/2
+            y = h - (j * th + th / 2)
+            x = (i * (tw + ts)) / 2 + tw / 2
 
-            if si != ((i+1)%2 == 0):
-                y -= th/2
+            if si != ((i + 1) % 2 == 0):
+                y -= th / 2
         else:
-            y = h - ((j * (th + ts))/2 + th/2)
-            x = i * tw + tw/2
+            y = h - ((j * (th + ts)) / 2 + th / 2)
+            x = i * tw + tw / 2
 
-            if si != ((j+1)%2 == 0):
-                x += tw/2
+            if si != ((j + 1) % 2 == 0):
+                x += tw / 2
 
-        return (x, y)
+        return x, y
 
     def get_tile_index(self, pixel_x, pixel_y):
         w, h = self.size_on_screen
@@ -708,89 +726,88 @@ cdef class HexagonalTileMap(StaggeredTileMap):
         ts = self.hex_side_length
 
         if sa:
-            c = (tw - ts)/2
-            m = float(th/2)/c
-            col_shifted = int((pixel_x - ts - c)/(tw + ts))
-            col_non_shifted = int(pixel_x/(tw + ts))
+            c = (tw - ts) / 2
+            m = float(th / 2) / c
+            col_shifted = int((pixel_x - ts - c) / (tw + ts))
+            col_non_shifted = int(pixel_x / (tw + ts))
 
-            row_shifted = int((h - pixel_y - th/2)/th)
-            row_non_shifted = int((h - pixel_y)/th)
+            row_shifted = int((h - pixel_y - th / 2) / th)
+            row_non_shifted = int((h - pixel_y) / th)
 
-            rel_x_g = abs(pixel_x - col_non_shifted*(tw+ts))
-            rel_x_r = abs(pixel_x - col_shifted*(tw + ts) - (ts + c))
+            rel_x_g = abs(pixel_x - col_non_shifted * (tw + ts))
+            rel_x_r = abs(pixel_x - col_shifted * (tw + ts) - (ts + c))
 
             if si:
-                rel_y_g = abs(h - pixel_y - row_shifted*th - 1.5*th)
-                rel_y_r = abs(h - pixel_y - row_non_shifted*th - th)
+                rel_y_g = abs(h - pixel_y - row_shifted * th - 1.5 * th)
+                rel_y_r = abs(h - pixel_y - row_non_shifted * th - th)
             else:
-                rel_y_r = abs(h - pixel_y - row_shifted*th - 1.5*th)
-                rel_y_g = abs(h - pixel_y - row_non_shifted*th - th)
+                rel_y_r = abs(h - pixel_y - row_shifted * th - 1.5 * th)
+                rel_y_g = abs(h - pixel_y - row_non_shifted * th - th)
 
             # check if the pixel (pixel_x, pixel_y) lies inside the tile by
             # using the line equations of all bounding sides.
-            if (rel_y_g >= m*rel_x_g - m*(ts+c)
-                    and rel_y_g <= (-1)*m*rel_x_g + th + m*(ts+c)
+            if (rel_y_g >= m * rel_x_g - m * (ts + c)
+                    and rel_y_g <= (-1) * m * rel_x_g + th + m * (ts + c)
                     and rel_y_g <= th and rel_y_g >= 0
-                    and rel_y_g <= m*rel_x_g + th/2
-                    and rel_y_g >= (-1)*m*rel_x_g + th/2):
-                col = col_non_shifted*2
+                    and rel_y_g <= m * rel_x_g + th / 2
+                    and rel_y_g >= (-1) * m * rel_x_g + th / 2):
+                col = col_non_shifted * 2
                 row = row_shifted if si else row_non_shifted
 
             else:
-                col = col_shifted*2 + 1
+                col = col_shifted * 2 + 1
                 row = row_non_shifted if si else row_shifted
 
         else:
-            c = (th - ts)/2
-            m = float(c)/(tw/2)
-            col_shifted = int((pixel_x - tw/2)/tw)
-            col_non_shifted = int(pixel_x/tw)
-            row_non_shifted = int((h - pixel_y)/(th + ts))
-            row_shifted = int((h - pixel_y - (ts+c))/(th + ts))
+            c = (th - ts) / 2
+            m = float(c) / (tw / 2)
+            col_shifted = int((pixel_x - tw / 2) / tw)
+            col_non_shifted = int(pixel_x / tw)
+            row_non_shifted = int((h - pixel_y) / (th + ts))
+            row_shifted = int((h - pixel_y - (ts + c)) / (th + ts))
 
-            rel_y_g = abs(h - pixel_y - row_non_shifted*(th + ts) - (th + ts))
-            rel_y_r = abs(h - pixel_y - (row_shifted + 1)*(th + ts) - (ts + c))
+            rel_y_g = abs(h - pixel_y - row_non_shifted * (th + ts) - (th + ts))
+            rel_y_r = abs(h - pixel_y - (row_shifted + 1) * (th + ts) - (ts + c))
 
             if si:
-                rel_x_g = abs(pixel_x - tw/2 - col_shifted*tw)
-                rel_x_r = abs(pixel_x - col_non_shifted*tw)
+                rel_x_g = abs(pixel_x - tw / 2 - col_shifted * tw)
+                rel_x_r = abs(pixel_x - col_non_shifted * tw)
             else:
-                rel_x_g = abs(pixel_x - col_non_shifted*tw)
-                rel_x_r = abs(pixel_x - tw/2 - col_shifted*tw)
+                rel_x_g = abs(pixel_x - col_non_shifted * tw)
+                rel_x_r = abs(pixel_x - tw / 2 - col_shifted * tw)
 
-            if (rel_y_g >= -1*m*rel_x_g + (ts + c)
-                    and rel_y_g >= m*rel_x_g + (ts - c)
-                    and rel_y_g <= m*rel_x_g + (2*ts + c)
-                    and rel_y_g <= -1*m*rel_x_g + (2*ts + 3*c)):
+            if (rel_y_g >= -1 * m * rel_x_g + (ts + c)
+                    and rel_y_g >= m * rel_x_g + (ts - c)
+                    and rel_y_g <= m * rel_x_g + (2 * ts + c)
+                    and rel_y_g <= -1 * m * rel_x_g + (2 * ts + 3 * c)):
                 col = col_shifted if si else col_non_shifted
-                row = row_non_shifted*2
+                row = row_non_shifted * 2
 
             else:
                 col = col_non_shifted if si else col_shifted
-                row = row_shifted*2+1
+                row = row_shifted * 2 + 1
 
-        return (col, row)
-        
+        return col, row
+
     property size_on_screen:
         def __get__(self):
             sx, sy = self.size_x, self.size_y
             tw, th = self.tile_size_x, self.tile_size_y
             sa = self._stagger_axis
-            ts = self.hex_side_length 
+            ts = self.hex_side_length
 
             if sa:
-                return ((sx - 1) * (tw + ts)/2 + tw,
-                        sy * th + th/2)
+                return ((sx - 1) * (tw + ts) / 2 + tw,
+                        sy * th + th / 2)
             else:
-                return (sx * tw + tw/2,
-                        (sy - 1) * (th + ts)/2 + th)
+                return (sx * tw + tw / 2,
+                        (sy - 1) * (th + ts) / 2 + th)
 
     property hex_side_length:
         def __get__(self):
             return self.hex_side_length
         def __set__(self, unsigned int value):
             self.hex_side_length = value
-
 
 cdef class IsometricTileMap(TileMap):
     '''
@@ -802,40 +819,39 @@ cdef class IsometricTileMap(TileMap):
         w, h = self.size_on_screen
         tw, th = self.tile_size
 
-        x, y = ((i - j) * tw/2,
-                (i + j) * th/2)
+        x, y = ((i - j) * tw / 2,
+                (i + j) * th / 2)
 
-        x += w/2
+        x += w / 2
         y = h - th - y
 
-        return (x, y)
+        return x, y
 
     def get_tile_index(self, pixel_x, pixel_y):
         w, h = self.size_on_screen
         tw, th = self.tile_size
 
-        m = float(th)/tw
-        cos = 1/math.sqrt(1 + m*m)
-        sin = math.sqrt(1 - cos*cos)
-        side = th/(2*sin)
+        m = float(th) / tw
+        cos = 1 / math.sqrt(1 + m * m)
+        sin = math.sqrt(1 - cos * cos)
+        side = th / (2 * sin)
 
         pixel_y = h - pixel_y
-        pixel_x -= w/2
+        pixel_x -= w / 2
 
         # changed the co-ordinates from x-y to co-ordinates parallel to the
         # sides of isometric tile with new_u and new_v as new co-ordinates.
-        new_u = (pixel_x/(2*cos) + pixel_y/(2*sin))
-        new_v = (pixel_y/(2*sin) - pixel_x/(2*cos))
+        new_u = (pixel_x / (2 * cos) + pixel_y / (2 * sin))
+        new_v = (pixel_y / (2 * sin) - pixel_x / (2 * cos))
 
-        col = int(new_u/side)
-        row = int(new_v/side)
+        col = int(new_u / side)
+        row = int(new_v / side)
 
-        return (col, row)
+        return col, row
 
     property size_on_screen:
         def __get__(self):
             s = max(self.size_x, self.size_y)
             tw, th = self.tile_size_x, self.tile_size_y
 
-            return (s * tw, s * th)
-
+            return s * tw, s * th

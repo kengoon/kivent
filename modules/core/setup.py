@@ -63,7 +63,13 @@ elif platform.startswith('openbsd'):
     global_include_dirs = ['/usr/X11R6/include']
     extra_link_args = ['-L', '/usr/X11R6/lib']
 elif platform == 'darwin':
-    if sys.maxsize > 2 ** 32:
+    import platform as _pf
+
+    machine = _pf.machine()
+
+    if machine == 'arm64':
+        osx_arch = 'arm64'
+    elif sys.maxsize > 2 ** 32:
         osx_arch = 'x86_64'
     else:
         osx_arch = 'i386'
